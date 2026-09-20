@@ -1,4 +1,5 @@
 const SAMPLE_RATE = 22050
+const DING_POOL = 4
 
 function audioCtor(): typeof AudioContext | null {
   if (typeof window === 'undefined') return null
@@ -11,32 +12,14 @@ function audioCtor(): typeof AudioContext | null {
 
 let context: AudioContext | null = null
 let keepAlive: OscillatorNode | null = null
-let ding: HTMLAudioElement | null = null
+let hold: HTMLAudioElement | null = null
+let pool: HTMLAudioElement[] = []
+let poolIndex = 0
 let dingUri: string | null = null
+let silenceUri: string | null = null
+let listening = false
 
-export function buildDingDataUri(): string {
-  const duration = 0.58
-  const total = Math.floor(SAMPLE_RATE * duration)
-  const samples = new Int16Array(total)
-  const notes = [
-    { freq: 523.25, start: 0, end: 0.3 },
-    { freq: 659.25, start: 0.1, end: 0.42 },
-    { freq: 783.99, start: 0.22, end: 0.58 },
-  ]
-
-  for (let i = 0; i < total; i += 1) {
-    const t = i / SAMPLE_RATE
-    let value = 0
-    for (const note of notes) {
-      if (t < note.start || t > note.end) continue
-      const local = t - note.start
-      const len = note.end - note.start
-      const envelope = Math.sin(Math.PI * (local / len))
-      value += Math.sin(2 * Math.PI * note.freq * t) * envelope
-    }
-    samples[i] = Math.round(Math.max(-1, Math.min(1, value * 0.42)) * 0x7fff)
-  }
-
+export function encodePcmWav(samples: Int16Array): string {
   const bytes = new Uint8Array(44 + samples.length * 2)
   const view = new DataView(bytes.buffer)
   const writeChars = (offset: number, text: string) => {
@@ -56,7 +39,7 @@ export function buildDingDataUri(): string {
   view.setUint16(34, 16, true)
   writeChars(36, 'data')
   view.setUint32(40, samples.length * 2, true)
-  bytes.set(new Uint8Array(samples.buffer), 44)
+  bytes.set(new Uint8Array(samples.buffer, samples.byteOffset, samples.byteLength), 44)
 
   let binary = ''
   const chunk = 8192
@@ -66,6 +49,36 @@ export function buildDingDataUri(): string {
   return `data:audio/wav;base64,${btoa(binary)}`
 }
 
+export function buildDingDataUri(): string {
+  const duration = 0.62
+  const total = Math.floor(SAMPLE_RATE * duration)
+  const samples = new Int16Array(total)
+  const notes = [
+    { freq: 659.25, start: 0, end: 0.28 },
+    { freq: 783.99, start: 0.1, end: 0.4 },
+    { freq: 987.77, start: 0.22, end: 0.62 },
+  ]
+
+  for (let i = 0; i < total; i += 1) {
+    const t = i / SAMPLE_RATE
+    let value = 0
+    for (const note of notes) {
+      if (t < note.start || t > note.end) continue
+      const local = t - note.start
+      const len = note.end - note.start
+      const envelope = Math.sin(Math.PI * (local / len))
+      value += Math.sin(2 * Math.PI * note.freq * t) * envelope
+    }
+    samples[i] = Math.round(Math.max(-1, Math.min(1, value * 0.55)) * 0x7fff)
+  }
+
+  return encodePcmWav(samples)
+}
+
+export function buildSilenceDataUri(): string {
+  return encodePcmWav(new Int16Array(Math.floor(SAMPLE_RATE * 0.35)))
+}
+
 function audioContext(): AudioContext | null {
   const Ctor = audioCtor()
   if (!Ctor) return null
@@ -73,16 +86,45 @@ function audioContext(): AudioContext | null {
   return context
 }
 
-function getDing(): HTMLAudioElement | null {
-  if (typeof Audio === 'undefined') return null
-  dingUri ??= buildDingDataUri()
-  if (!ding) {
-    ding = new Audio(dingUri)
-    ding.preload = 'auto'
-    ding.setAttribute('playsinline', 'true')
-    ding.volume = 0.85
+function attachHidden(el: HTMLAudioElement): void {
+  el.setAttribute('playsinline', 'true')
+  el.setAttribute('webkit-playsinline', 'true')
+  el.setAttribute('aria-hidden', 'true')
+  el.preload = 'auto'
+  if (typeof document !== 'undefined' && !el.isConnected) {
+    el.style.position = 'absolute'
+    el.style.width = '0'
+    el.style.height = '0'
+    el.style.opacity = '0'
+    document.body.appendChild(el)
   }
-  return ding
+}
+
+function makeAudio(src: string, loop = false): HTMLAudioElement | null {
+  if (typeof Audio === 'undefined') return null
+  const el = new Audio(src)
+  el.loop = loop
+  attachHidden(el)
+  return el
+}
+
+function dingPool(): HTMLAudioElement[] {
+  dingUri ??= buildDingDataUri()
+  if (pool.length === 0) {
+    for (let i = 0; i < DING_POOL; i += 1) {
+      const el = makeAudio(dingUri)
+      if (el) pool.push(el)
+    }
+  }
+  return pool
+}
+
+function holdAudio(): HTMLAudioElement | null {
+  if (hold) return hold
+  silenceUri ??= buildSilenceDataUri()
+  hold = makeAudio(silenceUri, true)
+  if (hold) hold.volume = 0.01
+  return hold
 }
 
 async function resumeContext(): Promise<AudioContext | null> {
@@ -103,8 +145,8 @@ function startKeepAlive(ctx: AudioContext): void {
   try {
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
-    osc.frequency.value = 1
-    gain.gain.value = 0.00001
+    osc.frequency.value = 40
+    gain.gain.value = 0.00002
     osc.connect(gain)
     gain.connect(ctx.destination)
     osc.start()
@@ -117,30 +159,32 @@ function startKeepAlive(ctx: AudioContext): void {
 function playWebChime(ctx: AudioContext): void {
   if (ctx.state !== 'running') return
   const now = ctx.currentTime
-  const notes = [523.25, 659.25, 783.99]
+  const notes = [659.25, 783.99, 987.77]
   notes.forEach((freq, index) => {
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
     osc.type = 'sine'
     osc.frequency.value = freq
-    const start = now + index * 0.1
+    const start = now + index * 0.09
     gain.gain.setValueAtTime(0, start)
-    gain.gain.linearRampToValueAtTime(0.14, start + 0.02)
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.55)
+    gain.gain.linearRampToValueAtTime(0.18, start + 0.02)
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.5)
     osc.connect(gain)
     gain.connect(ctx.destination)
     osc.start(start)
-    osc.stop(start + 0.6)
+    osc.stop(start + 0.55)
   })
 }
 
-async function playHtmlDing(): Promise<boolean> {
-  const el = getDing()
-  if (!el) return false
+async function playFromPool(): Promise<boolean> {
+  const clips = dingPool()
+  if (clips.length === 0) return false
+  const el = clips[poolIndex % clips.length]
+  poolIndex += 1
   try {
     el.pause()
     el.currentTime = 0
-    el.volume = 0.85
+    el.volume = 0.9
     const play = el.play()
     if (play) await play
     return true
@@ -149,17 +193,38 @@ async function playHtmlDing(): Promise<boolean> {
   }
 }
 
-let listening = false
+async function primeElement(el: HTMLAudioElement, restoreVolume: number): Promise<void> {
+  const previous = el.volume
+  try {
+    el.volume = 0.01
+    const play = el.play()
+    if (play) await play
+    if (!el.loop) {
+      el.pause()
+      el.currentTime = 0
+    }
+  } catch {
+    // Gesture unlock can still fail; later plays retry.
+  } finally {
+    if (!el.loop) el.volume = restoreVolume
+    else el.volume = previous || 0.01
+  }
+}
 
 function listenForForeground(): void {
   if (listening || typeof document === 'undefined') return
   listening = true
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible') return
+  const bump = () => {
     void resumeContext().then((ctx) => {
       if (ctx) startKeepAlive(ctx)
     })
+    const holdEl = holdAudio()
+    if (holdEl && holdEl.paused) void holdEl.play().catch(() => undefined)
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') bump()
   })
+  window.addEventListener('pageshow', bump)
 }
 
 export async function unlockAudio(): Promise<void> {
@@ -167,26 +232,28 @@ export async function unlockAudio(): Promise<void> {
   const ctx = await resumeContext()
   if (ctx) startKeepAlive(ctx)
 
-  const el = getDing()
-  if (!el) return
-  const previous = el.volume
-  try {
-    el.volume = 0
-    const play = el.play()
-    if (play) await play
-    el.pause()
-    el.currentTime = 0
-  } catch {
-    // First play can still fail on some browsers; later chimes retry.
-  } finally {
-    el.volume = previous || 0.85
+  const holdEl = holdAudio()
+  if (holdEl) await primeElement(holdEl, 0.01)
+
+  for (const clip of dingPool()) {
+    await primeElement(clip, 0.9)
   }
 }
 
 export async function playChime(): Promise<void> {
   const ctx = await resumeContext()
-  const htmlPlayed = await playHtmlDing()
-  if (!htmlPlayed && ctx) playWebChime(ctx)
+  if (ctx) {
+    startKeepAlive(ctx)
+    playWebChime(ctx)
+  }
+  await playFromPool()
+}
+
+export function releaseAudio(): void {
+  if (hold) {
+    hold.pause()
+    hold.currentTime = 0
+  }
 }
 
 export function hapticPulse(): void {

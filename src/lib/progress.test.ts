@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ROUTINE, totalRoutineSeconds } from '../data/routine'
-import { advance, initialStep } from './progress'
+import { advance, allSessionChimeLabels, chimeCuesOnFinish, initialStep } from './progress'
 
 describe('routine', () => {
   it('has eight stretches with demo links', () => {
@@ -45,24 +45,45 @@ describe('advance', () => {
     expect(step).toEqual({ kind: 'done' })
     expect(guard).toBe(18)
   })
+})
 
-  it('dings after every timed stretch, including both figure-4 sides', () => {
-    const chimed: string[] = []
-    let step = initialStep()
-    let guard = 0
-    while (step.kind !== 'done' && guard < 40) {
-      if (step.kind === 'stretch') {
-        chimed.push(`${ROUTINE[step.index].id}:${step.side ?? 'center'}`)
-      }
-      step = advance(step)
-      guard += 1
-    }
-    expect(chimed).toContain('figure-4:left')
-    expect(chimed).toContain('figure-4:right')
-    expect(chimed.filter((id) => id.startsWith('figure-4:'))).toEqual([
-      'figure-4:left',
-      'figure-4:right',
+describe('chime cues', () => {
+  it('dings on every stretch, every side switch, and session end', () => {
+    const labels = allSessionChimeLabels()
+    expect(labels).toEqual([
+      'segment:cat-cow:center',
+      'segment:open-book:left',
+      'switch:open-book',
+      'segment:open-book:right',
+      'segment:chin-tucks:center',
+      'segment:worlds-greatest:left',
+      'switch:worlds-greatest',
+      'segment:worlds-greatest:right',
+      'segment:hip-flexor:left',
+      'switch:hip-flexor',
+      'segment:hip-flexor:right',
+      'segment:figure-4:left',
+      'switch:figure-4',
+      'segment:figure-4:right',
+      'segment:hamstring:left',
+      'switch:hamstring',
+      'segment:hamstring:right',
+      'segment:childs-pose:center',
+      'session',
     ])
-    expect(chimed).toHaveLength(13)
+  })
+
+  it('treats both figure-4 and hamstring sides as ding events', () => {
+    const labels = allSessionChimeLabels()
+    expect(labels).toContain('segment:figure-4:left')
+    expect(labels).toContain('switch:figure-4')
+    expect(labels).toContain('segment:figure-4:right')
+    expect(labels).toContain('segment:hamstring:left')
+    expect(labels).toContain('switch:hamstring')
+    expect(labels).toContain('segment:hamstring:right')
+  })
+
+  it('dings when a switch step finishes', () => {
+    expect(chimeCuesOnFinish({ kind: 'switch', index: 5 })).toEqual(['switch'])
   })
 })

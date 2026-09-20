@@ -5,6 +5,8 @@ export type Step =
   | { kind: 'switch'; index: number }
   | { kind: 'done' }
 
+export type ChimeCue = 'segment' | 'switch' | 'session'
+
 export function initialStep(): Step {
   const first = ROUTINE[0]
   return {
@@ -43,6 +45,35 @@ export function currentStretch(step: Step) {
   return ROUTINE[step.index]
 }
 
-export function chimesWhenFinished(step: Step): boolean {
-  return step.kind === 'stretch'
+export function chimeCuesOnFinish(step: Step): ChimeCue[] {
+  if (step.kind === 'stretch') {
+    const cues: ChimeCue[] = ['segment']
+    if (advance(step).kind === 'done') cues.push('session')
+    return cues
+  }
+  if (step.kind === 'switch') return ['switch']
+  return []
+}
+
+export function describeCue(step: Step, cue: ChimeCue): string {
+  if (cue === 'session') return 'session'
+  if (step.kind === 'switch') return `switch:${ROUTINE[step.index].id}`
+  if (step.kind === 'stretch') {
+    return `segment:${ROUTINE[step.index].id}:${step.side ?? 'center'}`
+  }
+  return cue
+}
+
+export function allSessionChimeLabels(): string[] {
+  const labels: string[] = []
+  let step = initialStep()
+  let guard = 0
+  while (step.kind !== 'done' && guard < 40) {
+    for (const cue of chimeCuesOnFinish(step)) {
+      labels.push(describeCue(step, cue))
+    }
+    step = advance(step)
+    guard += 1
+  }
+  return labels
 }
