@@ -15,6 +15,11 @@ describe('routine', () => {
     expect(stretch?.demoUrl).toBe('https://www.youtube.com/watch?v=tCwUnHRi7jY')
   })
 
+  it('uses Susie’s Child’s Pose demo', () => {
+    const stretch = ROUTINE.find((item) => item.id === 'childs-pose')
+    expect(stretch?.demoUrl).toBe('https://www.youtube.com/watch?v=Ndhfm1Jxu2U')
+  })
+
   it('is about ten minutes including switch-side time', () => {
     expect(totalRoutineSeconds()).toBe(620)
   })

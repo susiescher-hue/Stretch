@@ -23,7 +23,7 @@ If the link 404s the first time, enable Pages once: repo **Settings → Pages �
 
 Each move has a short form cue and a **Watch demo** button that opens YouTube in a new tab. Bilateral moves pause with a **Switch sides** prompt.
 
-World’s Greatest Stretch uses the UCLA Recreation demo (`tCwUnHRi7jY`) — one trainer, about 49 seconds, little talking.
+World’s Greatest Stretch uses the UCLA Recreation demo (`tCwUnHRi7jY`) — one trainer, about 49 seconds, little talking. Child’s Pose uses Susie’s pick (`Ndhfm1Jxu2U`).
 
 ## Safety
 

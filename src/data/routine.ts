@@ -99,7 +99,7 @@ export const ROUTINE: Stretch[] = [
     cue: 'Hips toward heels, arms long. Breathe into the back ribs. Nothing left to do — just arrive here.',
     seconds: 45,
     bilateral: false,
-    demoUrl: 'https://www.youtube.com/watch?v=_ZX_zTOBgp8',
+    demoUrl: 'https://www.youtube.com/watch?v=Ndhfm1Jxu2U',
   },
 ]
 
