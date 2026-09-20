@@ -42,3 +42,7 @@ export function currentStretch(step: Step) {
   if (step.kind === 'done') return null
   return ROUTINE[step.index]
 }
+
+export function chimesWhenFinished(step: Step): boolean {
+  return step.kind === 'stretch'
+}

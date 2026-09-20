@@ -10,6 +10,11 @@ describe('routine', () => {
     }
   })
 
+  it('uses a short single-person World’s Greatest Stretch demo', () => {
+    const stretch = ROUTINE.find((item) => item.id === 'worlds-greatest')
+    expect(stretch?.demoUrl).toBe('https://www.youtube.com/watch?v=tCwUnHRi7jY')
+  })
+
   it('is about ten minutes including switch-side time', () => {
     expect(totalRoutineSeconds()).toBe(620)
   })
@@ -39,5 +44,25 @@ describe('advance', () => {
     }
     expect(step).toEqual({ kind: 'done' })
     expect(guard).toBe(18)
+  })
+
+  it('dings after every timed stretch, including both figure-4 sides', () => {
+    const chimed: string[] = []
+    let step = initialStep()
+    let guard = 0
+    while (step.kind !== 'done' && guard < 40) {
+      if (step.kind === 'stretch') {
+        chimed.push(`${ROUTINE[step.index].id}:${step.side ?? 'center'}`)
+      }
+      step = advance(step)
+      guard += 1
+    }
+    expect(chimed).toContain('figure-4:left')
+    expect(chimed).toContain('figure-4:right')
+    expect(chimed.filter((id) => id.startsWith('figure-4:'))).toEqual([
+      'figure-4:left',
+      'figure-4:right',
+    ])
+    expect(chimed).toHaveLength(13)
   })
 })

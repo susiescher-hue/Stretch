@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ROUTINE, SWITCH_HOLD_MS } from '../data/routine'
 import { hapticPulse, playChime, unlockAudio } from '../lib/chime'
-import { advance, initialStep, type Step } from '../lib/progress'
+import { advance, chimesWhenFinished, initialStep, type Step } from '../lib/progress'
 
 export type Screen = 'home' | 'active' | 'switch' | 'complete'
 
@@ -18,8 +18,13 @@ export function useSession(options: { muted: boolean; onComplete: () => void }) 
 
   const finishingRef = useRef(false)
   const switchLockRef = useRef(false)
+  const stepRef = useRef(step)
   const onCompleteRef = useRef(options.onComplete)
   const mutedRef = useRef(options.muted)
+
+  useEffect(() => {
+    stepRef.current = step
+  }, [step])
 
   useEffect(() => {
     onCompleteRef.current = options.onComplete
@@ -32,7 +37,7 @@ export function useSession(options: { muted: boolean; onComplete: () => void }) 
   const signalEnd = useCallback(() => {
     setPulse(true)
     window.setTimeout(() => setPulse(false), 900)
-    if (!mutedRef.current) playChime()
+    if (!mutedRef.current) void playChime()
     hapticPulse()
   }, [])
 
@@ -86,11 +91,12 @@ export function useSession(options: { muted: boolean; onComplete: () => void }) 
     if (finishingRef.current) return
     finishingRef.current = true
     setRunning(false)
-    signalEnd()
+    const current = stepRef.current
+    if (chimesWhenFinished(current)) signalEnd()
     window.setTimeout(() => {
-      moveOn(step)
+      moveOn(current)
     }, ADVANCE_FLASH_MS)
-  }, [moveOn, signalEnd, step])
+  }, [moveOn, signalEnd])
 
   useEffect(() => {
     if (screen !== 'active' || !running || endAt === null) return
@@ -121,7 +127,7 @@ export function useSession(options: { muted: boolean; onComplete: () => void }) 
         switchLockRef.current = true
         setSwitchLeftMs(0)
         finishingRef.current = false
-        moveOn(step)
+        moveOn(stepRef.current)
         return
       }
       setSwitchLeftMs(left)
@@ -129,7 +135,7 @@ export function useSession(options: { muted: boolean; onComplete: () => void }) 
     }
     frame = window.requestAnimationFrame(tick)
     return () => window.cancelAnimationFrame(frame)
-  }, [endAt, moveOn, screen, step])
+  }, [endAt, moveOn, screen])
 
   const start = useCallback(async () => {
     await unlockAudio()
@@ -137,6 +143,7 @@ export function useSession(options: { muted: boolean; onComplete: () => void }) 
   }, [beginStretch])
 
   const pause = useCallback(() => {
+    void unlockAudio()
     if (!running || endAt === null) return
     setRemainingMs(Math.max(0, endAt - Date.now()))
     setEndAt(null)
@@ -150,17 +157,18 @@ export function useSession(options: { muted: boolean; onComplete: () => void }) 
     setRunning(true)
   }, [remainingMs, running, screen])
 
-  const skip = useCallback(() => {
+  const skip = useCallback(async () => {
+    await unlockAudio()
     if (screen === 'switch') {
       if (switchLockRef.current) return
       switchLockRef.current = true
       finishingRef.current = false
-      moveOn(step)
+      moveOn(stepRef.current)
       return
     }
     if (screen !== 'active') return
     finishCurrent()
-  }, [finishCurrent, moveOn, screen, step])
+  }, [finishCurrent, moveOn, screen])
 
   const endEarly = useCallback(() => {
     goHome()

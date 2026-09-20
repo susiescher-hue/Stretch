@@ -52,7 +52,8 @@ export const ROUTINE: Stretch[] = [
     cue: 'Long lunge, hand inside the front foot. Rotate the chest open toward the front knee. Keep the back knee soft.',
     seconds: 45,
     bilateral: true,
-    demoUrl: 'https://www.youtube.com/watch?v=-rK5otzYmt4',
+    // UCLA Recreation ~49s, one trainer, little talking
+    demoUrl: 'https://www.youtube.com/watch?v=tCwUnHRi7jY',
   },
   {
     id: 'hip-flexor',
